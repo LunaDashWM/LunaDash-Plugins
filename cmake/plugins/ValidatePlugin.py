@@ -85,6 +85,8 @@ def validate(manifest, root, targets):
         schema = implementation.get("settings")
         require(isinstance(schema, dict), "settings must be an object (empty is allowed)")
         validate_schema(schema)
+        require(all(rule["type"] != "array" for rule in schema.values()),
+                "Plugin settings do not support array values")
         allowed_controls = {"toggle", "select", "number", "slider"}
         require(all(control(rule) in allowed_controls for rule in schema.values()),
                 "Plugin settings support only toggle, select, number and slider controls")
