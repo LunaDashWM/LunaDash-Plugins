@@ -3,6 +3,20 @@ include(GNUInstallDirs)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 set(LUNADASH_PLUGIN_CMAKE_DIR "${CMAKE_CURRENT_LIST_DIR}")
 
+function(lunadash_require_nlohmann_json)
+    find_package(nlohmann_json 3.11 CONFIG QUIET)
+    if(nlohmann_json_FOUND)
+        return()
+    endif()
+
+    include(FetchContent)
+    set(JSON_BuildTests OFF CACHE INTERNAL "Disable dependency tests")
+    FetchContent_Declare(nlohmann_json
+        URL https://github.com/nlohmann/json/archive/refs/tags/v3.11.3.tar.gz
+        URL_HASH SHA256=0d8ef5af7f9794e3263480193c491549b2ba6cc74bb018906202ada498a79406)
+    FetchContent_MakeAvailable(nlohmann_json)
+endfunction()
+
 function(lunadash_add_plugin target)
     cmake_parse_arguments(PLUGIN "" "METADATA" "SOURCES;FILES" ${ARGN})
     if(NOT PLUGIN_METADATA OR PLUGIN_UNPARSED_ARGUMENTS)
@@ -33,9 +47,7 @@ function(lunadash_add_plugin target)
         set(multi_target TRUE)
     endif()
 
-    set(has_effect FALSE)
     set(effect_entry "")
-    set(shader_outputs)
 
     math(EXPR last_target "${target_count} - 1")
     foreach(index RANGE 0 ${last_target})
@@ -45,8 +57,8 @@ function(lunadash_add_plugin target)
             string(JSON kind GET "${manifest}" type)
         endif()
 
+        # ValidatePlugin.py accepts native effects only.
         if(kind STREQUAL "effect")
-            set(has_effect TRUE)
             if(NOT PLUGIN_SOURCES)
                 message(FATAL_ERROR "Native effects require explicit SOURCES")
             endif()
@@ -59,52 +71,20 @@ function(lunadash_add_plugin target)
                 message(FATAL_ERROR "All native targets in one package must share one .so entry")
             endif()
             set(effect_entry "${entry}")
-        elseif(kind STREQUAL "quickshell")
-            if(multi_target)
-                string(JSON entry GET "${manifest}" targets ${index} entry)
-            else()
-                string(JSON entry GET "${manifest}" entry)
-            endif()
-            list(APPEND PLUGIN_FILES "${source_dir}/${entry}")
-        elseif(kind STREQUAL "opengl")
-            find_package(Qt6 6.4 REQUIRED COMPONENTS ShaderTools)
-            foreach(stage IN ITEMS vertex fragment)
-                if(multi_target)
-                    string(JSON shader GET "${manifest}" targets ${index} shaders ${stage})
-                else()
-                    string(JSON shader GET "${manifest}" shaders ${stage})
-                endif()
-                configure_file("${source_dir}/${shader}" "${output}/${shader}" COPYONLY)
-                add_custom_command(OUTPUT "${output}/${shader}.qsb"
-                    COMMAND Qt6::qsb --glsl "100 es,120,150"
-                            -o "${output}/${shader}.qsb" "${source_dir}/${shader}"
-                    DEPENDS "${source_dir}/${shader}" VERBATIM)
-                list(APPEND shader_outputs "${output}/${shader}.qsb")
-                install(FILES "${output}/${shader}" "${output}/${shader}.qsb"
-                    DESTINATION "${CMAKE_INSTALL_DATADIR}/lunadash/plugins/${id}")
-            endforeach()
         endif()
     endforeach()
 
-    if(has_effect)
-        string(REGEX REPLACE "\\.so$" "" library "${effect_entry}")
-        add_library(${target} MODULE ${PLUGIN_SOURCES}
-            "${output}/Registration.c" "${LUNADASH_PLUGIN_API_SOURCE}")
-        target_include_directories(${target} PRIVATE "${LUNADASH_PLUGIN_INCLUDE_DIR}")
-        set_target_properties(${target} PROPERTIES
-            C_STANDARD 11 C_STANDARD_REQUIRED ON CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
-            PREFIX "" OUTPUT_NAME "${library}" SUFFIX ".so"
-            LIBRARY_OUTPUT_DIRECTORY "${output}"
-            C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
-        install(TARGETS ${target}
-            LIBRARY DESTINATION "${CMAKE_INSTALL_DATADIR}/lunadash/plugins/${id}")
-        if(shader_outputs)
-            add_custom_target(${target}-shaders ALL DEPENDS ${shader_outputs})
-            add_dependencies(${target} ${target}-shaders)
-        endif()
-    else()
-        add_custom_target(${target} ALL DEPENDS ${shader_outputs})
-    endif()
+    string(REGEX REPLACE "\\.so$" "" library "${effect_entry}")
+    add_library(${target} MODULE ${PLUGIN_SOURCES}
+        "${output}/Registration.c" "${LUNADASH_PLUGIN_API_SOURCE}")
+    target_include_directories(${target} PRIVATE "${LUNADASH_PLUGIN_INCLUDE_DIR}")
+    set_target_properties(${target} PROPERTIES
+        C_STANDARD 11 C_STANDARD_REQUIRED ON CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON
+        PREFIX "" OUTPUT_NAME "${library}" SUFFIX ".so"
+        LIBRARY_OUTPUT_DIRECTORY "${output}"
+        C_VISIBILITY_PRESET hidden CXX_VISIBILITY_PRESET hidden)
+    install(TARGETS ${target}
+        LIBRARY DESTINATION "${CMAKE_INSTALL_DATADIR}/lunadash/plugins/${id}")
 
     string(JSON icon ERROR_VARIABLE icon_error GET "${manifest}" icon)
     if(NOT icon_error)
