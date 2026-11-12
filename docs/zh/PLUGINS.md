@@ -26,7 +26,7 @@ cmake --build my-motion/build
 cmake --install my-motion/build
 ```
 
-`lunadash-create-plugin` 直接在程式內產生 native `effect` 專案（沒有 template 目錄）：`CMakeLists.txt`、含範例設定的 `metadata.json` 和 `Effect.cpp`；`window-animation` 可用 `--language c` 產生 `Effect.c`。`--list` 列出 native plugin 能擴充的 compositor 功能。在原始碼目錄中請用 `scripts/create-plugin.py`。
+`lunadash-create-plugin` 直接在程式內產生 native `effect` 專案（沒有 template 目錄）：`CMakeLists.txt`、含 target registry 範例設定的 `metadata.json` 和 `Effect.cpp`；registry entry 有範例 response 的 target 可用 `--language c` 產生 `Effect.c`。`--list` 列出 native plugin 能擴充的 compositor 功能。在原始碼目錄中請用 `scripts/create-plugin.py`。
 
 每個 project 使用：
 
@@ -76,7 +76,7 @@ Plugin 的 settings 不需要另外寫設定介面。Host 會透過共用 Settin
 ludash_plugin_process(request, response, capacity)
 ```
 
-Request 帶 `target/mode/context/builtin/current/settings`。SDK 產生 `ludash_plugin_entry_v2`、嵌入 manifest 並建立 receipt。
+Request 帶 `target/mode/context/builtin/current/settings`。回傳的結果會先依 target 在 registry 的 `response` schema 檢查，再做需要 host 狀態的檢查；不合格的結果會被隔離，保留 built-in／前一個結果。SDK 產生 `ludash_plugin_entry_v2`、嵌入 manifest 並建立 receipt。
 
 不要保存 host pointer、開 background thread、註冊跨 callback、跑 nested event loop 或長時間 block。Native code 沒 sandbox，仍能讓 compositor crash/hang。
 

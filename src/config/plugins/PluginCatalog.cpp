@@ -301,17 +301,10 @@ readPluginMetadataTargets(const std::string &path, bool applyConfiguration) {
                                    &result.error)))
       return {result};
 
-    const auto windowTemplate =
-        jsonString(implementation, "windowTemplate", "tiling");
-    if ((jsonContains(implementation, "windowTemplate") &&
-         (result.type != "effect" || result.target != "window-layout")) ||
-        jsonContains(implementation, "layoutMode") ||
-        (windowTemplate != "tiling" && windowTemplate != "stacking") ||
-        (windowTemplate == "stacking" && result.mode != "replace")) {
-      result.error =
-          "windowTemplate stacking requires a window-layout replacement";
+    if (schemaVersion == 2 &&
+        !resolveExtensionOptions(target, implementation, result.mode,
+                                 &result.options, &result.error))
       return {result};
-    }
 
     // Plugins are native effects; the Quickshell and OpenGL plugins of the
     // former QML shell are no longer loaded.
@@ -392,8 +385,7 @@ Json pluginDescriptorJson(const PluginDescriptor &plugin) {
       {"target", plugin.target},
       {"mode", plugin.mode},
       {"schemaVersion", plugin.schemaVersion},
-      {"windowTemplate",
-       jsonString(plugin.implementation, "windowTemplate", "tiling")},
+      {"options", plugin.options},
       {"enabled", plugin.enabled},
       {"error", plugin.error},
       {"settingsSchema", plugin.settingsSchema},

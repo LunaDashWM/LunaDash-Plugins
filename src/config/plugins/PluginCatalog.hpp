@@ -19,6 +19,7 @@ struct PluginDescriptor {
   int schemaVersion = 1;
   Json manifest = Json::object();
   Json implementation = Json::object();
+  Json options = Json::object();
   Json settingsSchema = Json::object();
   Json settings = Json::object();
   std::string libraryPath;

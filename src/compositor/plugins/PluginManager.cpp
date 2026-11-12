@@ -1101,16 +1101,18 @@ void PluginManager::reportError(const std::string &key,
     refresh();
 }
 
-std::string PluginManager::windowTemplateKey() const {
+Json PluginManager::replacementOption(const std::string &target,
+                                     const std::string &option) const {
   for (const auto &native : native_) {
     const auto &plugin = native->current;
     if (plugin.enabled && plugin.error.empty() &&
         !errors_.contains(pluginInstanceId(plugin)) &&
         plugin.manifest == native->descriptor.manifest &&
-        plugin.target == "window-layout" && plugin.mode == "replace")
-      return jsonString(plugin.implementation, "windowTemplate", "tiling");
+        plugin.target == target && plugin.mode == "replace")
+      return jsonValue(plugin.options, option);
   }
-  return "tiling";
+  return jsonValue(
+      extensionDefaults(jsonObject(extensionTarget(target), "options")), option);
 }
 
 Json PluginManager::filter(const std::string &target, const Json &builtin,
@@ -1118,6 +1120,7 @@ Json PluginManager::filter(const std::string &target, const Json &builtin,
   HookStateGuard guard(inHook_);
   Json current = builtin;
   bool replaced = false;
+  std::optional<Json> responseSchema;
   for (const std::string mode : {"replace", "augment"}) {
     for (const auto &native : native_) {
       const auto &descriptor = native->current;
@@ -1152,7 +1155,10 @@ Json PluginManager::filter(const std::string &target, const Json &builtin,
       const auto result =
           parseJson(std::string_view(response.data(),
                                      static_cast<std::size_t>(length)));
-      if (!result.is_object() || !validate(result)) {
+      if (!responseSchema)
+        responseSchema = jsonObject(extensionTarget(target), "response");
+      if (!validateExtensionResponse(*responseSchema, result) ||
+          (validate && !validate(result))) {
         reportError(pluginInstanceId(descriptor),
                     "Invalid plugin output; built-in/previous result retained");
         continue;

@@ -2,20 +2,15 @@
 #include "compositor/plugins/PluginManager.hpp"
 #include "compositor/window/WindowTemplate.hpp"
 #include "config/plugins/ExtensionConfiguration.hpp"
-#include "config/plugins/ExtensionRegistry.hpp"
-#include <climits>
-#include <cmath>
 #include <cstdint>
 #include <unordered_set>
 #include <vector>
 
 namespace LunaDash {
+// Result shapes and static bounds come from each target's registry `response`
+// schema (checked by PluginManager::filter); the validators here only add
+// constraints that depend on live compositor state.
 namespace {
-bool integer(const Json &value, int low, int high) {
-  const double n = jsonAsDouble(value);
-  return value.is_number() && std::isfinite(n) && n == std::floor(n) &&
-         n >= low && n <= high;
-}
 Json rectJson(Rect rect) {
   return {{"x", rect.x()},
           {"y", rect.y()},
@@ -35,13 +30,7 @@ Json windowAnimationProfile(PluginManager &plugins, const Json &preferences,
     profile[it.key()] = it.value();
   if (jsonInt(profile, "duration") < 0)
     profile["duration"] = jsonValue(preferences, "animationDuration");
-  const auto schema = jsonObject(extensionTarget("window-animation"), "settings");
-  profile = plugins.filter(
-      "window-animation", profile, Json::object(), [&](const Json &output) {
-        return output.size() == schema.size() &&
-               jsonInt(output, "duration", -1) >= 0 &&
-               validateExtensionSettings(schema, output, nullptr);
-      });
+  profile = plugins.filter("window-animation", profile, Json::object());
   if (!jsonBool(preferences, "animations"))
     profile["duration"] = 0;
   return profile;
@@ -52,19 +41,19 @@ int shellAnimationDuration(PluginManager &plugins, int fallback) {
   const auto output = plugins.filter(
       "shell-animation",
       Json{{"duration", configured < 0 ? fallback : configured}},
-      Json::object(), [](const Json &result) {
-        return result.size() == 1 && integer(jsonValue(result, "duration"), 0, 600);
-      });
+      Json::object());
   return jsonInt(output, "duration", fallback);
+}
+std::string windowTemplateKey(const PluginManager &plugins) {
+  return jsonAsString(plugins.replacementOption("window-layout", "windowTemplate"),
+                      "tiling");
 }
 Json initialWindowRule(PluginManager &plugins, const Json &context,
                        int workspace, bool maximized, int workspaceCount) {
   return plugins.filter(
       "window-rules", Json{{"workspace", workspace}, {"maximized", maximized}},
       context, [workspaceCount](const Json &output) {
-        return output.size() == 2 &&
-               integer(jsonValue(output, "workspace"), 0, workspaceCount - 1) &&
-               jsonValue(output, "maximized").is_boolean();
+        return jsonInt(output, "workspace") < workspaceCount;
       });
 }
 std::vector<WindowPlacement>
@@ -94,20 +83,12 @@ pluginWindowPlacements(PluginManager &plugins,
            {"windowTemplate", windowTemplate.key},
            {"allowOverlap", stacking}},
       [&](const Json &result) {
-        const auto values = jsonValue(result, "windows");
-        if (result.size() != 1 || !values.is_array() ||
-            values.size() != windows.size())
+        const auto values = jsonArray(result, "windows");
+        if (values.size() != windows.size())
           return false;
         std::unordered_set<std::int64_t> seen;
         std::vector<Rect> rectangles;
         for (const auto &object : values) {
-          if (!object.is_object() || object.size() != 5 ||
-              !integer(jsonValue(object, "id"), 1, INT_MAX) ||
-              !integer(jsonValue(object, "x"), -32768, 32768) ||
-              !integer(jsonValue(object, "y"), -32768, 32768) ||
-              !integer(jsonValue(object, "width"), 1, 32768) ||
-              !integer(jsonValue(object, "height"), 1, 32768))
-            return false;
           const std::int64_t id = jsonInteger(object, "id");
           const Rect rect = rectFromJson(object);
           if (!expected.contains(id) || seen.contains(id) ||

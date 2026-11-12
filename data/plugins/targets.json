@@ -42,7 +42,96 @@
         ]
       }
     },
-    "selection": "single"
+    "selection": "single",
+    "response": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        },
+        "enterOffset": {
+          "type": "integer",
+          "minimum": -100,
+          "maximum": 100
+        },
+        "focusOpacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "exitScale": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        "easing": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "outCubic",
+            "outQuint",
+            "inOutCubic"
+          ]
+        }
+      }
+    },
+    "example": {
+      "settings": {
+        "duration": {
+          "type": "integer",
+          "default": 240,
+          "minimum": 0,
+          "maximum": 600,
+          "control": "number",
+          "label": "Duration (ms)"
+        },
+        "enterOffset": {
+          "type": "integer",
+          "default": 12,
+          "minimum": -100,
+          "maximum": 100,
+          "control": "number",
+          "label": "Enter offset"
+        },
+        "focusOpacity": {
+          "type": "number",
+          "default": 0.82,
+          "minimum": 0,
+          "maximum": 1,
+          "control": "slider",
+          "label": "Unfocused opacity"
+        },
+        "exitScale": {
+          "type": "number",
+          "default": 0.9,
+          "minimum": 0.5,
+          "maximum": 1,
+          "control": "slider",
+          "label": "Exit scale"
+        },
+        "easing": {
+          "type": "string",
+          "default": "outCubic",
+          "enum": [
+            "linear",
+            "outCubic",
+            "outQuint",
+            "inOutCubic"
+          ],
+          "control": "select",
+          "label": "Easing"
+        }
+      },
+      "response": {
+        "duration": 280,
+        "enterOffset": 20,
+        "focusOpacity": 0.9,
+        "exitScale": 0.95,
+        "easing": "outQuint"
+      }
+    }
   },
   {
     "id": "window-layout",
@@ -59,7 +148,63 @@
         "maximum": 64
       }
     },
-    "selection": "single"
+    "selection": "single",
+    "options": {
+      "windowTemplate": {
+        "type": "string",
+        "default": "tiling",
+        "enum": [
+          "tiling",
+          "stacking"
+        ]
+      }
+    },
+    "replaceOnly": {
+      "windowTemplate": [
+        "stacking"
+      ]
+    },
+    "removedOptions": {
+      "layoutMode": "use windowTemplate"
+    },
+    "response": {
+      "type": "object",
+      "properties": {
+        "windows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483647
+              },
+              "x": {
+                "type": "integer",
+                "minimum": -32768,
+                "maximum": 32768
+              },
+              "y": {
+                "type": "integer",
+                "minimum": -32768,
+                "maximum": 32768
+              },
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32768
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 32768
+              }
+            }
+          }
+        }
+      }
+    }
   },
   {
     "id": "window-rules",
@@ -69,7 +214,39 @@
       "effect"
     ],
     "settings": {},
-    "selection": "single"
+    "selection": "single",
+    "response": {
+      "type": "object",
+      "properties": {
+        "workspace": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 2147483647
+        },
+        "maximized": {
+          "type": "boolean"
+        }
+      }
+    },
+    "example": {
+      "settings": {
+        "workspace": {
+          "type": "integer",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 9,
+          "step": 1,
+          "control": "number",
+          "label": "Workspace"
+        },
+        "maximized": {
+          "type": "boolean",
+          "default": false,
+          "control": "toggle",
+          "label": "Start maximized"
+        }
+      }
+    }
   },
   {
     "id": "shell-animation",
@@ -86,6 +263,31 @@
         "maximum": 600
       }
     },
-    "selection": "single"
+    "selection": "single",
+    "response": {
+      "type": "object",
+      "properties": {
+        "duration": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 600
+        }
+      }
+    },
+    "example": {
+      "settings": {
+        "duration": {
+          "type": "integer",
+          "default": 180,
+          "minimum": 0,
+          "maximum": 600,
+          "control": "slider",
+          "label": "Duration (ms)"
+        }
+      },
+      "response": {
+        "duration": 180
+      }
+    }
   }
 ]

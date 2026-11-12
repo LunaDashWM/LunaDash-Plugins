@@ -23,11 +23,16 @@ public:
   bool installFromStore(const std::string &id, std::string *error = nullptr);
   bool removeInstalledPlugin(const std::string &id,
                              std::string *error = nullptr);
+  // Runs the enabled plugins of `target`. Each result must match the target's
+  // registry `response` schema; `validate` adds checks that need host state.
   using Validator = std::function<bool(const Json &)>;
   Json filter(const std::string &target, const Json &builtin,
-              const Json &context, const Validator &validate);
+              const Json &context, const Validator &validate = {});
   void reportError(const std::string &id, const std::string &error);
-  std::string windowTemplateKey() const;
+  // A registry-declared manifest option of the active replacement for
+  // `target`, or the option's registry default.
+  Json replacementOption(const std::string &target,
+                         const std::string &option) const;
   void setChangedCallback(std::function<void()> callback);
 
 private:

@@ -13,30 +13,6 @@ import sys
 
 VERSION = "1.0.2a"
 
-# Example settings per target. Together they use every stable control (toggle, select,
-# number, slider), so generated projects double as the SDK's control coverage.
-TARGET_SETTINGS = {
-    "window-animation": {
-        "duration": {"type": "integer", "default": 240, "minimum": 0, "maximum": 600,
-                     "control": "number", "label": "Duration (ms)"},
-        "enterOffset": {"type": "integer", "default": 12, "minimum": -100, "maximum": 100,
-                        "control": "number", "label": "Enter offset"},
-        "focusOpacity": {"type": "number", "default": 0.82, "minimum": 0, "maximum": 1,
-                         "control": "slider", "label": "Unfocused opacity"},
-        "exitScale": {"type": "number", "default": 0.9, "minimum": 0.5, "maximum": 1,
-                      "control": "slider", "label": "Exit scale"},
-        "easing": {"type": "string", "default": "outCubic",
-                   "enum": ["linear", "outCubic", "outQuint", "inOutCubic"],
-                   "control": "select", "label": "Easing"},
-    },
-    "window-rules": {
-        "workspace": {"type": "integer", "default": 1, "minimum": 0, "maximum": 9, "step": 1,
-                      "control": "number", "label": "Workspace"},
-        "maximize": {"type": "boolean", "default": False, "control": "toggle",
-                     "label": "Start maximized"},
-    },
-}
-
 CMAKE = """cmake_minimum_required(VERSION 3.21)
 project({target} LANGUAGES C CXX)
 find_package(LunaDashPlugin 2 CONFIG REQUIRED)
@@ -68,28 +44,24 @@ extern "C" int ludash_plugin_process(const char *request, char *response, size_t
 }} // namespace LunaDash
 """
 
-CPP_BODIES = {
-    "window-animation": """
-  // The settings map one to one onto the animation profile.
-  for (const auto *key : {"duration", "enterOffset", "focusOpacity", "exitScale", "easing"})
+CPP_COPY_BODY = """
+  // Settings named like a result field are copied into the result.
+  for (const auto *key : {{{keys}}})
     if (settings.contains(key))
       output[key] = settings[key];
-""",
-}
+"""
 CPP_DEFAULT_BODY = """
   // Customize the result here, for example from `settings`.
 """
 
 C_SOURCE = """#include "core/plugins/PluginApi.h"
 
-/* A C plugin may parse the request with any JSON library. This one returns a complete window
-   animation profile, which works for both replace and augment mode. */
-int ludash_plugin_process(const char *request, char *response, size_t capacity) {
+/* A C plugin may parse the request with any JSON library. This one returns the complete
+   example {target} result, which works for both replace and augment mode. */
+int ludash_plugin_process(const char *request, char *response, size_t capacity) {{
     (void)request;
-    return ludash_plugin_write_json(
-        "{\\"duration\\":280,\\"enterOffset\\":20,\\"focusOpacity\\":0.9,"
-        "\\"exitScale\\":0.95,\\"easing\\":\\"outQuint\\"}", response, capacity);
-}
+    return ludash_plugin_write_json({literal}, response, capacity);
+}}
 """
 
 
@@ -97,10 +69,30 @@ def library_name(plugin_id):
     return re.sub(r"[^A-Za-z0-9_-]", "-", plugin_id.rsplit(".", 1)[-1]) or "plugin"
 
 
-def scaffold(target, plugin_id, language="cpp"):
-    """The files of a new plugin project, as {file name: contents}."""
-    if language == "c" and target != "window-animation":
-        raise ValueError("C scaffolds exist for the window-animation target only")
+def c_literal(value):
+    return '"' + json.dumps(value, separators=(",", ":")).replace("\\", "\\\\").replace(
+        '"', '\\"') + '"'
+
+
+def cpp_body(entry, settings):
+    """Copy the example settings that share a name with a result field."""
+    fields = entry.get("response", {}).get("properties", {})
+    keys = [key for key in settings if key in fields]
+    if not keys:
+        return CPP_DEFAULT_BODY
+    return CPP_COPY_BODY.format(keys=", ".join(f'"{key}"' for key in keys))
+
+
+def scaffold(entry, plugin_id, language="cpp"):
+    """The files of a new plugin project for a targets.json entry, as {file name: contents}.
+
+    The entry's optional `example` provides the generated settings and, for C, the complete
+    result the plugin returns."""
+    target = entry["id"]
+    example = entry.get("example", {})
+    if language == "c" and "response" not in example:
+        raise ValueError(f"No C scaffold for {target}: its registry entry has no example response")
+    settings = {} if language == "c" else example.get("settings", {})
     name = library_name(plugin_id)
     source = "Effect.c" if language == "c" else "Effect.cpp"
     files = {
@@ -110,8 +102,8 @@ def scaffold(target, plugin_id, language="cpp"):
             json_line="" if language == "c" else "lunadash_require_nlohmann_json()\n",
             link_line="" if language == "c" else
             f"target_link_libraries({name} PRIVATE nlohmann_json::nlohmann_json)\n"),
-        source: C_SOURCE if language == "c" else CPP_SOURCE.format(
-            target=target, body=CPP_BODIES.get(target, CPP_DEFAULT_BODY)),
+        source: C_SOURCE.format(target=target, literal=c_literal(example.get("response")))
+        if language == "c" else CPP_SOURCE.format(target=target, body=cpp_body(entry, settings)),
     }
     manifest = {
         "schemaVersion": 2,
@@ -125,7 +117,7 @@ def scaffold(target, plugin_id, language="cpp"):
         "target": target,
         "mode": "augment",
         "enabledByDefault": False,
-        "settings": {} if language == "c" else TARGET_SETTINGS.get(target, {}),
+        "settings": settings,
         "entry": f"lib{name}.so",
     }
     files["metadata.json"] = json.dumps(manifest, indent=2) + "\n"
@@ -156,16 +148,18 @@ def main():
     args = parser.parse_args()
     if args.list:
         for target in targets:
-            print(f'{target["category"]:16} {target["id"]}')
+            c = "  (C example)" if "response" in target.get("example", {}) else ""
+            print(f'{target["category"]:16} {target["id"]}{c}')
         return 0
-    if not any(entry["id"] == args.target for entry in targets):
+    entry = next((entry for entry in targets if entry["id"] == args.target), None)
+    if entry is None:
         parser.error("choose a native target from --list")
     if not args.id or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]+", args.id):
         parser.error("--id must be a reverse-domain plugin identifier")
     if not args.output or args.output.exists():
         parser.error("--output must name a new directory")
     try:
-        files = scaffold(args.target, args.id, args.language)
+        files = scaffold(entry, args.id, args.language)
     except ValueError as error:
         parser.error(str(error))
     args.output.mkdir(parents=True)

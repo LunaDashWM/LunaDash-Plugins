@@ -1,12 +1,14 @@
 # Plugin target reference
 
-`data/plugins/targets.json` is the machine-readable registry. Run `lunadash-create-plugin --list` to inspect targets and supported types, then generate a native effect project with `--target`, `--id` and `--output` (`--language c` for `window-animation`). The generator writes the files itself and the project uses the LunaDash CMake SDK. This is a development API, not a promise of a stable compositor ABI across future SDK major versions.
+`data/plugins/targets.json` is the machine-readable registry. Run `lunadash-create-plugin --list` to inspect targets and supported types, then generate a native effect project with `--target`, `--id` and `--output` (`--language c` for targets marked `(C example)`). The generator writes the files itself, using each target's registry `example` and the project uses the LunaDash CMake SDK. This is a development API, not a promise of a stable compositor ABI across future SDK major versions.
 
 ## Native hooks (`effect`)
 
 Every target is a native compositor hook. The visual Quickshell/OpenGL slots belonged to the former QML shell and were removed with it.
 
 All hooks run synchronously on the host thread. No raw compositor pointers are passed. The JSON envelope and unloading rules are documented in [PLUGINS.md](PLUGINS.md). Configuration and placement hooks run when state changes, rather than invoking third-party code on every rendered frame.
+
+The registry `response` schema of each target is authoritative; the table summarizes it together with the host-state checks that the schema cannot express.
 
 | Target | Response | Context / validation |
 | --- | --- | --- |
@@ -21,11 +23,25 @@ Visual stacking order follows focus-to-front. In stacking mode, taskbar activati
 
 The [stacking-windows example](../../examples/plugins/stacking-windows/README.md) demonstrates this policy and a configurable initial cascade. It is installed disabled alongside the native fade example when example plugins are enabled.
 
+## Registry fields
+
+The plugin manager, SDK validator and scaffolder contain no per-target code; everything a target needs is declared in its `targets.json` entry:
+
+| Field | Purpose |
+| --- | --- |
+| `id`, `name`, `category`, `types`, `selection` | Identity, Settings page, supported plugin types and whether only one plugin may be enabled (`single`) |
+| `settings` | Built-in options (settings schema) |
+| `response` | Result schema checked by `PluginManager::filter` for every plugin result. Objects must contain exactly their `properties`; arrays use `items`; integers/numbers accept `minimum`/`maximum`; any value accepts `enum`. A target without `response` rejects all plugin results |
+| `options` | Extra manifest fields a plugin of this target may declare (settings schema), such as `windowTemplate`. Other targets reject them |
+| `replaceOnly` | Option values that require `mode: replace`, e.g. `{"windowTemplate": ["stacking"]}` |
+| `removedOptions` | Retired manifest fields and the replacement hint shown when they are used |
+| `example` | Scaffold data: `settings` for generated projects (settings named like a `response` property are copied into the result) and an optional complete `response` that enables the C scaffold |
+
 ## Adding a host feature
 
-1. Add a target, category, supported types (`effect`) and built-in setting schema to `targets.json`.
-2. Invoke a native filter at the owning domain's state boundary.
-3. Define and validate the full response/context contract. Preserve built-in behavior until a valid replacement is ready.
-4. Add its contract here and update relevant behavioral tests. The scaffolder, CMake validator and settings categories consume the registry automatically.
+1. Add the target to `targets.json` with its `settings`, `response` and, if useful, `options` and `example`.
+2. Invoke `PluginManager::filter` at the owning domain's state boundary (see `ExtensionHooks.cpp`). Pass a validator only for checks that need live state, such as window IDs or the workspace count.
+3. Preserve built-in behavior until a valid replacement is ready.
+4. Add its contract here and update relevant behavioral tests. The manager, scaffolder, CMake validator and settings categories consume the registry automatically.
 
 A registry entry alone does not implement a feature hook. Do not advertise new targets until their host actually calls/mounts them. Asynchronous services and shader passes need a future host interface; they cannot be implemented by inventing metadata targets.

@@ -5,7 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
-from SettingsSchema import control, validate_schema
+from SettingsSchema import control, member, valid_value, validate_schema
 
 
 def implementations(manifest):
@@ -15,6 +15,26 @@ def implementations(manifest):
     if not isinstance(values, list) or not 1 <= len(values) <= 16:
         raise ValueError("targets must contain between 1 and 16 target objects")
     return values
+
+
+def validate_options(target, implementation, targets):
+    """Check the manifest options the registry declares for this target."""
+    schema = target.get("options", {})
+    for name, hint in target.get("removedOptions", {}).items():
+        if name in implementation:
+            raise ValueError(f"{name} was removed; {hint}")
+    for other in targets:
+        for name in [*other.get("options", {}), *other.get("removedOptions", {})]:
+            if name in implementation and name not in schema:
+                raise ValueError(f"{name} is not an option of target {target['id']}")
+    validate_schema(schema)
+    for name, rule in schema.items():
+        value = implementation.get(name, rule["default"])
+        if not valid_value(rule, value):
+            raise ValueError(f"Invalid {name} for target {target['id']}")
+        if (implementation["mode"] != "replace" and
+                member(value, target.get("replaceOnly", {}).get(name, []))):
+            raise ValueError(f"{name} {value} requires replacement mode")
 
 
 def validate(manifest, root, targets):
@@ -73,15 +93,7 @@ def validate(manifest, root, targets):
                 f"Target does not support plugin type: {target_id}/{kind}")
         require(implementation.get("mode") in ("replace", "augment"),
                 "mode must be replace or augment")
-        require("layoutMode" not in implementation,
-                "layoutMode was removed; use windowTemplate")
-        window_template = implementation.get("windowTemplate", "tiling")
-        require(window_template in ("tiling", "stacking"), "Unknown windowTemplate")
-        require("windowTemplate" not in implementation or
-                (kind == "effect" and target_id == "window-layout"),
-                "windowTemplate requires a native window-layout plugin")
-        require(window_template != "stacking" or implementation["mode"] == "replace",
-                "Stacking windowTemplate requires replacement mode")
+        validate_options(target, implementation, targets)
         schema = implementation.get("settings")
         require(isinstance(schema, dict), "settings must be an object (empty is allowed)")
         validate_schema(schema)
